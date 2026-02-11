@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 import cors from 'cors';
 import { config } from './config.js';
 import { connectDb } from './db.js';
@@ -11,6 +12,8 @@ import ebayRouter from './routes/ebay.js';
 import { runHourlyScrape } from './jobs/hourlyScrape.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.join(__dirname, 'public');
+const hasBuiltFrontend = fs.existsSync(path.join(publicDir, 'index.html'));
 
 await connectDb();
 
@@ -36,9 +39,8 @@ app.get('/api/notifications', (req, res) => {
 
 runHourlyScrape();
 
-// Production: serve built frontend and SPA fallback
-if (process.env.NODE_ENV === 'production') {
-  const publicDir = path.join(__dirname, 'public');
+// Serve built frontend when server/public exists (after npm run build)
+if (hasBuiltFrontend) {
   app.use(express.static(publicDir));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
@@ -48,8 +50,8 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(config.port, '0.0.0.0', () => {
   console.log(`Server running at http://localhost:${config.port} (and on your network)`);
-  console.log('Hourly scrape enabled (every 1 hour)');
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Serving frontend from server/public');
+  console.log('Auto scrape enabled (every 30 minutes)');
+  if (hasBuiltFrontend) {
+    console.log('Serving frontend from server/public (open http://localhost:' + config.port + ')');
   }
 });

@@ -4,7 +4,7 @@ import { setLastScrapeEndedAt } from '../lastScrape.js';
 
 const MIN_LIKES = 10;
 const MAX_PAGES = 50;
-const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 let running = false;
 

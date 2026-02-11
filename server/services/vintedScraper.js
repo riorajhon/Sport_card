@@ -81,7 +81,7 @@ function normalizeItem(raw) {
   };
 }
 
-async function fetchCatalogPage(page, pageNum, searchText) {
+async function fetchCatalogPage(page, pageNum, searchText, useCatalogFilter = true) {
   const q = (searchText != null && searchText !== '') ? searchText : search;
   const params = new URLSearchParams({
     search_text: q,
@@ -89,14 +89,26 @@ async function fetchCatalogPage(page, pageNum, searchText) {
     per_page: '48',
     order: 'newest_first',
   });
-  params.append('catalog_ids[]', String(TRADING_CARDS_CATALOG_ID));
+  if (useCatalogFilter) {
+    params.append('catalog_ids[]', String(TRADING_CARDS_CATALOG_ID));
+  }
   const url = `${apiBase}?${params.toString()}`;
   const data = await page.evaluate(async (apiUrl) => {
     const res = await fetch(apiUrl, {
       credentials: 'same-origin',
       headers: { Accept: 'application/json, text/plain, */*' },
     });
-    if (!res.ok) throw new Error(`API ${res.status}`);
+    if (!res.ok) {
+      const text = await res.text();
+      let errMsg = `API ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.error || json.message) errMsg += `: ${json.error || json.message}`;
+      } catch (_) {
+        if (text && text.length < 200) errMsg += `: ${text}`;
+      }
+      throw new Error(errMsg);
+    }
     return res.json();
   }, url);
   return data;
@@ -142,8 +154,22 @@ export async function runScrape(options = {}) {
 
     let currentPage = 1;
     const totalSteps = maxPages || 20;
+    let useCatalogFilter = true;
+
     while (true) {
-      const data = await fetchCatalogPage(page, currentPage, query);
+      let data;
+      try {
+        data = await fetchCatalogPage(page, currentPage, query, useCatalogFilter);
+      } catch (err) {
+        // Catalog ID may be invalid for this domain (e.g. 4874 not on vinted.com) -> retry without filter
+        if (useCatalogFilter && (err.message.includes('400') || err.message.includes('API 400'))) {
+          useCatalogFilter = false;
+          console.warn('[Vinted] Catalog filter rejected (400), continuing without catalog_ids');
+          data = await fetchCatalogPage(page, currentPage, query, false);
+        } else {
+          throw err;
+        }
+      }
       const items = data.items || [];
       for (const raw of items) {
         if (!titleHasYear(raw.title)) continue;
