@@ -138,6 +138,10 @@ async function runSearchLoop(page, options) {
       }
     }
     const items = data.items || [];
+    const withYear = items.filter((raw) => titleHasYear(raw.title));
+    if (items.length === 0 && currentPage === 1) {
+      console.warn(`[Vinted] "${query}" page 1 returned 0 items (VPS/datacenter IP may be blocked or geo-restricted)`);
+    }
     for (const raw of items) {
       if (!titleHasYear(raw.title)) continue;
       const item = normalizeItem(raw);
@@ -166,7 +170,14 @@ export async function runScrape(options = {}) {
   const { maxPages = 2, delayMs = 1500, minLikes, maxLikes, searchText, searchTerms, onPage } = options;
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--no-first-run',
+    ],
   });
 
   const sentIds = new Set();
@@ -186,8 +197,11 @@ export async function runScrape(options = {}) {
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'en-US,en;q=0.9',
     });
+    await page.setViewport({ width: 1280, height: 800 }); // look more like a real browser
 
+    const gotoStart = Date.now();
     await page.goto(baseUrl, { waitUntil: 'load', timeout: 60000 });
+    console.log(`[Vinted] Loaded ${baseUrl} in ${Date.now() - gotoStart}ms`);
 
     for (const query of terms) {
       await runSearchLoop(page, {
@@ -218,6 +232,7 @@ export async function runScrape(options = {}) {
       }
     }
 
+    console.log(`[Vinted] Scrape finished: ${filtered.length} items (${byId.size} unique with year, min likes applied)`);
     return { items: filtered, total: filtered.length };
   } finally {
     await browser.close();

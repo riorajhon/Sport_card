@@ -43,6 +43,7 @@ async function runOnce() {
     console.log('[Hourly scrape] Done.');
   } catch (err) {
     console.error('[Hourly scrape] Error:', err.message);
+    if (err.stack) console.error(err.stack);
   } finally {
     clearProgress();
     setLastScrapeEndedAt();
