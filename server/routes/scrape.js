@@ -1,13 +1,18 @@
 import { Router } from 'express';
 import { runScrape } from '../services/vintedScraper.js';
 import { processPageItems } from '../services/scrapeProcessor.js';
-import { Item } from '../models/Item.js';
 import { setLastScrapeEndedAt } from '../lastScrape.js';
+import { getProgress } from '../scrapeProgress.js';
 
 const router = Router();
 
+/** GET /api/scrape/status – current scrape progress for UI */
+router.get('/status', (req, res) => {
+  res.json(getProgress());
+});
+
 const FIXED_MIN_LIKES = 10;
-const FIXED_MAX_PAGES = 50;
+const FIXED_MAX_PAGES = 100;
 
 function buildEbayLink(title) {
   if (!title || typeof title !== 'string') return null;
@@ -28,7 +33,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-/** POST /api/scrape/stream – SSE stream (fixed 50 pages, min likes 10). */
+/** POST /api/scrape/stream – SSE stream (fixed 100 pages, min likes 10). */
 router.post('/stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');

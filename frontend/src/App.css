@@ -110,6 +110,85 @@
   margin-left: auto;
 }
 
+/* System status: idle vs scraping with progress bar */
+.system-status {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+}
+
+.system-status-idle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.system-status-idle.system-status-wait {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.system-status-idle .system-status-label {
+  color: #22c55e;
+}
+
+.system-status-scraping {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.system-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.system-status-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #3b82f6;
+}
+
+.system-status-detail {
+  font-size: 0.9rem;
+  color: #a1a1aa;
+}
+
+.system-status-pct {
+  color: #e4e4e7;
+  font-variant-numeric: tabular-nums;
+}
+
+.system-status-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: #27272a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.system-status-bar-fill {
+  height: 100%;
+  min-width: 2%;
+  background: #3b82f6;
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+}
+
+.system-status-last-updated {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #27272a;
+  font-size: 0.85rem;
+  color: #71717a;
+}
+
 .progress-text {
   font-size: 0.9rem;
   color: #a1a1aa;
@@ -122,6 +201,57 @@
 
 .main {
   min-height: 200px;
+}
+
+/* Window-starting style loading screen */
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 2rem;
+}
+
+.loading-screen-inner {
+  text-align: center;
+  max-width: 280px;
+}
+
+.loading-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #e4e4e7;
+}
+
+.loading-bar-wrap {
+  width: 100%;
+  height: 4px;
+  background: #27272a;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.loading-bar {
+  height: 100%;
+  width: 35%;
+  background: #3b82f6;
+  border-radius: 4px;
+  animation: loading-bar 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-bar {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(200%); }
+  100% { transform: translateX(-100%); }
+}
+
+.loading-text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #71717a;
 }
 
 .status {

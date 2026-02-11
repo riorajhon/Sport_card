@@ -10,16 +10,6 @@ const apiBase = `${baseUrl}/api/v2/catalog/items`;
 
 const TRADING_CARDS_CATALOG_ID = 4874;
 
-/** Multiple search terms to catch more cards (a "bit" of each search). */
-const SEARCH_TERMS = [
-  'sport card',
-  'basketball card',
-  'football card',
-  'soccer card',
-  'baseball card',
-  'hockey card',
-];
-
 function titleHasYear(title) {
   if (!title || typeof title !== 'string') return false;
   return /\b(19[7-9]\d|20[0-2]\d|2030)\b/.test(title);
@@ -126,18 +116,69 @@ function applyLikesFilter(items, minLikes, maxLikes) {
 }
 
 /**
- * Run Vinted scrape. Uses one search (custom searchText or config "sport card"), paginates.
- * Calls onPage(newItems, progress) after every page so progress is sent for every step.
- * newItems = all new year-matching items from this page (not only those passing likes).
+ * Run one search query with pagination. Shared by runScrape.
+ */
+async function runSearchLoop(page, options) {
+  const { query, maxPagesForThisSearch, delayMs, minLikes, maxLikes, onPage, sentIds, byId, useCatalogFilterRef, stepRef, totalSteps } = options;
+  let currentPage = 1;
+  let useCatalogFilter = useCatalogFilterRef.current;
+
+  while (true) {
+    let data;
+    try {
+      data = await fetchCatalogPage(page, currentPage, query, useCatalogFilter);
+    } catch (err) {
+      if (useCatalogFilter && (err.message.includes('400') || err.message.includes('API 400'))) {
+        useCatalogFilter = false;
+        useCatalogFilterRef.current = false;
+        console.warn('[Vinted] Catalog filter rejected (400), continuing without catalog_ids');
+        data = await fetchCatalogPage(page, currentPage, query, false);
+      } else {
+        throw err;
+      }
+    }
+    const items = data.items || [];
+    for (const raw of items) {
+      if (!titleHasYear(raw.title)) continue;
+      const item = normalizeItem(raw);
+      byId.set(item.id, item);
+    }
+    const allFromPage = Array.from(byId.values());
+    const filtered = applyLikesFilter(allFromPage, minLikes, maxLikes);
+    const toSend = onPage ? filtered.filter((i) => !sentIds.has(i.id)) : [];
+    toSend.forEach((i) => sentIds.add(i.id));
+    stepRef.current += 1;
+    if (onPage) {
+      await onPage(toSend, { step: stepRef.current, totalSteps, totalFound: filtered.length });
+    }
+    if (maxPagesForThisSearch && currentPage >= maxPagesForThisSearch) break;
+    if (items.length === 0) break;
+    currentPage += 1;
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+  }
+}
+
+/**
+ * Run Vinted scrape. Single search or multiple search terms; paginates.
+ * Calls onPage(newItems, progress) after every page.
  */
 export async function runScrape(options = {}) {
-  const { maxPages = 2, delayMs = 1500, minLikes, maxLikes, searchText, onPage } = options;
+  const { maxPages = 2, delayMs = 1500, minLikes, maxLikes, searchText, searchTerms, onPage } = options;
   const browser = await puppeteer.launch({
     headless: 'new',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   });
 
   const sentIds = new Set();
+  const byId = new Map();
+  const useCatalogFilterRef = { current: true };
+  const stepRef = { current: 0 };
+
+  const terms = (searchTerms && searchTerms.length > 0)
+    ? searchTerms
+    : [(searchText != null && searchText !== '') ? searchText : search];
+  const maxPagesPerTerm = Math.max(1, Math.ceil((maxPages || 50) / terms.length));
+  const totalSteps = terms.length * maxPagesPerTerm;
 
   try {
     const page = await browser.newPage();
@@ -148,46 +189,20 @@ export async function runScrape(options = {}) {
 
     await page.goto(baseUrl, { waitUntil: 'load', timeout: 60000 });
 
-    const byId = new Map();
-    // Single search query: custom searchText or config "sport card"; then paginate through real pages
-    const query = (searchText != null && searchText !== '') ? searchText : search;
-
-    let currentPage = 1;
-    const totalSteps = maxPages || 20;
-    let useCatalogFilter = true;
-
-    while (true) {
-      let data;
-      try {
-        data = await fetchCatalogPage(page, currentPage, query, useCatalogFilter);
-      } catch (err) {
-        // Catalog ID may be invalid for this domain (e.g. 4874 not on vinted.com) -> retry without filter
-        if (useCatalogFilter && (err.message.includes('400') || err.message.includes('API 400'))) {
-          useCatalogFilter = false;
-          console.warn('[Vinted] Catalog filter rejected (400), continuing without catalog_ids');
-          data = await fetchCatalogPage(page, currentPage, query, false);
-        } else {
-          throw err;
-        }
-      }
-      const items = data.items || [];
-      for (const raw of items) {
-        if (!titleHasYear(raw.title)) continue;
-        const item = normalizeItem(raw);
-        byId.set(item.id, item);
-      }
-      const allFromPage = Array.from(byId.values());
-      const filtered = applyLikesFilter(allFromPage, minLikes, maxLikes);
-      const toSend = onPage ? filtered.filter((i) => !sentIds.has(i.id)) : [];
-      toSend.forEach((i) => sentIds.add(i.id));
-      if (onPage) {
-        await onPage(toSend, { step: currentPage, totalSteps, totalFound: filtered.length });
-      }
-      // Stop only when we've requested maxPages or API returned no items (request up to 50 etc.)
-      if (maxPages && currentPage >= maxPages) break;
-      if (items.length === 0) break;
-      currentPage += 1;
-      if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+    for (const query of terms) {
+      await runSearchLoop(page, {
+        query,
+        maxPagesForThisSearch: maxPagesPerTerm,
+        delayMs,
+        minLikes,
+        maxLikes,
+        onPage,
+        sentIds,
+        byId,
+        useCatalogFilterRef,
+        stepRef,
+        totalSteps,
+      });
     }
 
     const allItems = Array.from(byId.values());
@@ -208,3 +223,13 @@ export async function runScrape(options = {}) {
     await browser.close();
   }
 }
+
+/** Search terms used when expanding the scrape pool (exported for job). */
+export const SCRAPE_SEARCH_TERMS = [
+  'sport card',
+  'basketball card',
+  'football card',
+  'soccer card',
+  'baseball card',
+  'hockey card',
+];

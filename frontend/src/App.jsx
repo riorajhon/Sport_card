@@ -35,6 +35,20 @@ function Toast({ notification, onDismiss }) {
   )
 }
 
+function LoadingScreen() {
+  return (
+    <div className="loading-screen" role="status" aria-live="polite">
+      <div className="loading-screen-inner">
+        <h2 className="loading-title">Sport cards</h2>
+        <div className="loading-bar-wrap">
+          <div className="loading-bar" />
+        </div>
+        <p className="loading-text">Loading…</p>
+      </div>
+    </div>
+  )
+}
+
 function EbayCell({ item }) {
   const data = item.ebayData || null
   if (!data || (data.minPrice == null && data.maxPrice == null))
@@ -67,7 +81,17 @@ export default function App() {
   const [tableFilter, setTableFilter] = useState('')
   const [toasts, setToasts] = useState([])
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [scrapeProgress, setScrapeProgress] = useState({
+    running: false,
+    currentPage: 0,
+    totalPages: 0,
+    nextScrapeAt: null,
+    periodMs: null,
+  })
+  const [tick, setTick] = useState(0)
   const refetchTimeoutRef = useRef(null)
+  const scrapeProgressRef = useRef(null)
+  const scrapePollIntervalRef = useRef(null)
 
   const loadItems = () => {
     setLoading(true)
@@ -84,6 +108,54 @@ export default function App() {
   useEffect(() => {
     loadItems()
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => {
+      if (cancelled) return
+      fetch('/api/scrape/status')
+        .then((r) => r.json())
+        .catch(() => null)
+        .then((data) => {
+          if (cancelled || data == null) return
+          const next = {
+            running: !!data.running,
+            currentPage: data.currentPage ?? 0,
+            totalPages: data.totalPages ?? 0,
+            nextScrapeAt: data.nextScrapeAt ?? null,
+            periodMs: data.periodMs ?? null,
+          }
+          const prev = scrapeProgressRef.current
+          if (
+            prev == null ||
+            prev.running !== next.running ||
+            prev.currentPage !== next.currentPage ||
+            prev.totalPages !== next.totalPages ||
+            prev.nextScrapeAt !== next.nextScrapeAt ||
+            prev.periodMs !== next.periodMs
+          ) {
+            scrapeProgressRef.current = next
+            setScrapeProgress(next)
+          }
+        })
+    }
+    scrapePollIntervalRef.current = setInterval(poll, 3000)
+    poll()
+    return () => {
+      cancelled = true
+      if (scrapePollIntervalRef.current != null) {
+        clearInterval(scrapePollIntervalRef.current)
+        scrapePollIntervalRef.current = null
+      }
+    }
+  }, [])
+
+  // Tick every second when idle so countdown and progress bar update
+  useEffect(() => {
+    if (scrapeProgress.running) return
+    const id = setInterval(() => setTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [scrapeProgress.running])
 
   useEffect(() => {
     const es = new EventSource('/api/notifications')
@@ -140,14 +212,77 @@ export default function App() {
         </div>
       </header>
 
-      <main className="main">
-        {loading && items.length === 0 && <p className="status">Loading…</p>}
-        {error && <p className="status error">{error}</p>}
-        {!loading && !error && items.length === 0 && (
-          <p className="status">
-            No cards in database yet. Scrape runs automatically every hour (50 pages, min 10 likes).
-          </p>
+      <section className="system-status" aria-label="System status">
+        {scrapeProgress.running ? (
+          <div className="system-status-scraping" role="status" aria-live="polite">
+            <div className="system-status-row">
+              <span className="system-status-label">Scraping</span>
+              <span className="system-status-detail">
+                Page {scrapeProgress.currentPage} / {scrapeProgress.totalPages || 100}
+                {scrapeProgress.totalPages > 0 && (
+                  <span className="system-status-pct">
+                    {' '}({Math.round((100 * scrapeProgress.currentPage) / scrapeProgress.totalPages)}%)
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="system-status-bar-wrap">
+              <div
+                className="system-status-bar-fill"
+                style={{
+                  width: scrapeProgress.totalPages > 0
+                    ? `${Math.min(100, (100 * scrapeProgress.currentPage) / scrapeProgress.totalPages)}%`
+                    : '0%',
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="system-status-idle system-status-wait" role="status">
+            <div className="system-status-row">
+              <span className="system-status-label">System</span>
+              <span className="system-status-detail">
+                {scrapeProgress.nextScrapeAt != null && scrapeProgress.periodMs != null ? (
+                  (() => {
+                    const now = Date.now()
+                    const remainingMs = Math.max(0, scrapeProgress.nextScrapeAt - now)
+                    const remainingMin = Math.ceil(remainingMs / 60000)
+                    return (
+                      <>
+                        Next scrape in {remainingMin} min
+                        <span className="system-status-pct"> · 30 min cycle</span>
+                      </>
+                    )
+                  })()
+                ) : (
+                  'Idle · Auto scrape every 30 min (100 pages)'
+                )}
+              </span>
+            </div>
+            {scrapeProgress.nextScrapeAt != null && scrapeProgress.periodMs != null && (() => {
+              const now = Date.now()
+              const remainingMs = Math.max(0, scrapeProgress.nextScrapeAt - now)
+              const pct = scrapeProgress.periodMs > 0
+                ? Math.min(100, (100 * (scrapeProgress.periodMs - remainingMs)) / scrapeProgress.periodMs)
+                : 0
+              return (
+                <div className="system-status-bar-wrap">
+                  <div className="system-status-bar-fill" style={{ width: `${pct}%` }} />
+                </div>
+              )
+            })()}
+          </div>
         )}
+        {lastUpdated && (
+          <div className="system-status-last-updated">
+            Last updated: {formatUpdatedAt(lastUpdated)}
+          </div>
+        )}
+      </section>
+
+      <main className="main">
+        {error && <p className="status error">{error}</p>}
+        {items.length === 0 && !error && <LoadingScreen />}
         {items.length > 0 && (
           <div className="table-wrap">
             <div className="table-toolbar">

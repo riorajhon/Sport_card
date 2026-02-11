@@ -1,10 +1,13 @@
-import { runScrape } from '../services/vintedScraper.js';
+import { runScrape, SCRAPE_SEARCH_TERMS } from '../services/vintedScraper.js';
 import { processPageItems } from '../services/scrapeProcessor.js';
 import { setLastScrapeEndedAt } from '../lastScrape.js';
+import { setProgress, clearProgress, setNextRunInThirtyMin } from '../scrapeProgress.js';
 
 const MIN_LIKES = 10;
-const MAX_PAGES = 50;
+const MAX_PAGES = 120;
 const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+// Multiple search terms: total steps = terms × pages per term
+const TOTAL_SCRAPE_STEPS = SCRAPE_SEARCH_TERMS.length * Math.ceil(MAX_PAGES / SCRAPE_SEARCH_TERMS.length);
 
 let running = false;
 
@@ -14,6 +17,8 @@ async function runOnce() {
     return;
   }
   running = true;
+  setNextRunInThirtyMin(); // next run in 30 min
+  setProgress({ running: true, currentPage: 0, totalPages: TOTAL_SCRAPE_STEPS });
   try {
     console.log('[Hourly scrape] Starting...');
     await runScrape({
@@ -21,8 +26,15 @@ async function runOnce() {
       delayMs: 1500,
       minLikes: MIN_LIKES,
       maxLikes: undefined,
-      searchText: undefined,
-      onPage: async (newItems) => {
+      searchTerms: SCRAPE_SEARCH_TERMS,
+      onPage: async (newItems, progress) => {
+        if (progress) {
+          setProgress({
+            running: true,
+            currentPage: progress.step ?? 0,
+            totalPages: progress.totalSteps ?? TOTAL_SCRAPE_STEPS,
+          });
+        }
         if (newItems && newItems.length > 0) {
           await processPageItems(newItems);
         }
@@ -32,6 +44,7 @@ async function runOnce() {
   } catch (err) {
     console.error('[Hourly scrape] Error:', err.message);
   } finally {
+    clearProgress();
     setLastScrapeEndedAt();
     running = false;
   }
@@ -39,6 +52,5 @@ async function runOnce() {
 
 export function runHourlyScrape() {
   setInterval(runOnce, INTERVAL_MS);
-  // Run first time after 2 minutes so server can start without blocking
-  setTimeout(runOnce, 2 * 60 * 1000);
+  setTimeout(runOnce, 0); // first run immediately (next tick)
 }
