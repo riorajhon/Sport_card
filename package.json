@@ -1,0 +1,15 @@
+{
+  "name": "vinted-sport-cards",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sport cards from Vinted with eBay comparison",
+  "scripts": {
+    "build": "npm run build --prefix frontend && node scripts/copy-dist.cjs",
+    "start": "node server/index.js",
+    "dev:server": "npm run dev --prefix server",
+    "dev:frontend": "npm run dev --prefix frontend"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
