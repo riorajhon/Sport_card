@@ -181,6 +181,59 @@ export default function App() {
     return av === bv ? 0 : av > bv ? dir : -dir
   })
 
+  const handleExportCsv = () => {
+    if (!sorted.length) return
+    const headers = [
+      'id',
+      'title',
+      'price',
+      'price_incl_protection',
+      'source',
+      'likes',
+      'ebay_from',
+      'ebay_to',
+      'ebay_count',
+      'url',
+      'photo_url',
+      'brand',
+      'updatedAt',
+    ]
+    const rows = sorted.map((i) => [
+      i.id ?? '',
+      i.title ?? '',
+      i.price_incl_protection || i.price || '',
+      i.price_incl_protection || '',
+      i.source ?? '',
+      i.likes ?? '',
+      i.ebayData?.minPrice ?? '',
+      i.ebayData?.maxPrice ?? '',
+      i.ebayData?.total ?? '',
+      i.url ?? '',
+      i.photo_url ?? '',
+      i.brand ?? '',
+      i.updatedAt ?? '',
+    ])
+
+    const escapeCell = (value) => {
+      const s = String(value ?? '')
+      if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+
+    const csv = [headers, ...rows].map((row) => row.map(escapeCell).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'sport-cards.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const handleChangeSort = (key) => {
     setSortKey((prevKey) => {
       if (prevKey === key) {
@@ -291,6 +344,14 @@ export default function App() {
                   </select>
                 </label>
               </div>
+              <button
+                type="button"
+                className="btn-export"
+                onClick={handleExportCsv}
+                disabled={!sorted.length}
+              >
+                Export CSV
+              </button>
               <div className="table-pagination table-pagination-top">
                 <button
                   type="button"

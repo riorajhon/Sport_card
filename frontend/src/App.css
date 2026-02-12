@@ -507,6 +507,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+.btn-export {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid #22c55e33;
+  background: rgba(34, 197, 94, 0.1);
+  color: #bbf7d0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-export:not(:disabled):hover {
+  background: rgba(34, 197, 94, 0.25);
+  border-color: #22c55e;
+}
+
 .col-number {
   width: 40px;
   text-align: right;
