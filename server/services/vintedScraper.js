@@ -83,10 +83,16 @@ async function fetchCatalogPage(page, pageNum, searchText, useCatalogFilter = tr
     params.append('catalog_ids[]', String(TRADING_CARDS_CATALOG_ID));
   }
   const url = `${apiBase}?${params.toString()}`;
-  const data = await page.evaluate(async (apiUrl) => {
+  const origin = baseUrl;
+  const data = await page.evaluate(async (args) => {
+    const { apiUrl, origin: o } = args;
     const res = await fetch(apiUrl, {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json, text/plain, */*' },
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        Referer: o + '/',
+        Origin: o,
+      },
     });
     if (!res.ok) {
       const text = await res.text();
@@ -100,7 +106,7 @@ async function fetchCatalogPage(page, pageNum, searchText, useCatalogFilter = tr
       throw new Error(errMsg);
     }
     return res.json();
-  }, url);
+  }, { apiUrl: url, origin });
   return data;
 }
 
@@ -128,10 +134,12 @@ async function runSearchLoop(page, options) {
     try {
       data = await fetchCatalogPage(page, currentPage, query, useCatalogFilter);
     } catch (err) {
-      if (useCatalogFilter && (err.message.includes('400') || err.message.includes('API 400'))) {
+      const is400 = useCatalogFilter && (err.message.includes('400') || err.message.includes('API 400'));
+      const is403 = useCatalogFilter && (err.message.includes('403') || err.message.includes('API 403'));
+      if (is400 || is403) {
         useCatalogFilter = false;
         useCatalogFilterRef.current = false;
-        console.warn('[Vinted] Catalog filter rejected (400), continuing without catalog_ids');
+        console.warn(`[Vinted] API ${is403 ? '403' : '400'} – continuing without catalog_ids`);
         data = await fetchCatalogPage(page, currentPage, query, false);
       } else {
         throw err;
@@ -202,6 +210,8 @@ export async function runScrape(options = {}) {
     const gotoStart = Date.now();
     await page.goto(baseUrl, { waitUntil: 'load', timeout: 60000 });
     console.log(`[Vinted] Loaded ${baseUrl} in ${Date.now() - gotoStart}ms`);
+    // Short delay so cookies/session can settle (helps avoid 403 on first API call)
+    await new Promise((r) => setTimeout(r, 2000));
 
     for (const query of terms) {
       await runSearchLoop(page, {
