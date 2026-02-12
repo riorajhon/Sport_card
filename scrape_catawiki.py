@@ -2,6 +2,8 @@ import csv
 import time
 import os
 import re
+import sys
+import shutil
 import base64
 from datetime import datetime, timezone
 from urllib.parse import urljoin, quote
@@ -90,9 +92,27 @@ def create_driver() -> webdriver.Chrome:
     This makes our scraper behave much closer to a real user.
     """
     chrome_options = Options()
-    # Comment out the next line if you want to SEE the browser window
-    # chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--start-maximized")
+
+    # On headless Linux servers (Ubuntu VPS), Chrome often needs extra flags
+    # to start correctly (otherwise you see DevToolsActivePort / crashed errors).
+    if sys.platform.startswith("linux"):
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1280,800")
+
+        # Prefer a real Google Chrome binary if available
+        for path in ("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"):
+            if shutil.which(path):
+                chrome_options.binary_location = path
+                break
+    else:
+        # On desktop (Windows/macOS) you can see the window by commenting out
+        # the next line if you want to debug visually.
+        # chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--start-maximized")
+
     chrome_options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
