@@ -12,9 +12,12 @@ export const config = {
   ebay: {
     clientId: process.env.EBAY_CLIENT_ID || '',
     clientSecret: process.env.EBAY_CLIENT_SECRET || '',
+    /** e.g. EBAY_ES, EBAY_DE, EBAY_US – used for Browse API and buy links */
+    marketplaceId: (process.env.EBAY_MARKETPLACE_ID || 'EBAY_ES').toUpperCase(),
   },
   vinted: {
-    domain: (process.env.VINTED_DOMAIN || 'com').toLowerCase(),
+    /** EU: es, fr, de, it, nl, pl. US/UK: com, uk – use EU for buyable shipping in Europe */
+    domain: (process.env.VINTED_DOMAIN || 'es').toLowerCase(),
     search: process.env.VINTED_SEARCH || 'sport card',
     requestTimeout: 30000,
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

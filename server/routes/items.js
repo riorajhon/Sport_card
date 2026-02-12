@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Item } from '../models/Item.js';
 import { getLastScrapeEndedAt } from '../lastScrape.js';
+import { config } from '../config.js';
 
 const router = Router();
 
@@ -30,7 +31,12 @@ router.get('/', async (req, res) => {
       }
       return item;
     });
-    res.json({ items, total: items.length, lastScrapeEndedAt: getLastScrapeEndedAt() });
+    res.json({
+      items,
+      total: items.length,
+      lastScrapeEndedAt: getLastScrapeEndedAt(),
+      vintedDomain: config.vinted.domain,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

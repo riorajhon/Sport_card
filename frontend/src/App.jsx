@@ -81,6 +81,7 @@ export default function App() {
   const [tableFilter, setTableFilter] = useState('')
   const [toasts, setToasts] = useState([])
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [vintedDomain, setVintedDomain] = useState(null)
   const [scrapeProgress, setScrapeProgress] = useState({
     running: false,
     currentPage: 0,
@@ -100,6 +101,7 @@ export default function App() {
       .then((data) => {
         setItems(data.items || [])
         setLastUpdated(data.lastScrapeEndedAt || null)
+        setVintedDomain(data.vintedDomain || null)
       })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
@@ -342,8 +344,9 @@ export default function App() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="source-link source-vinted"
+                        title={item.url}
                       >
-                        Vinted
+                        Vinted{vintedDomain ? ` (${vintedDomain.toUpperCase()})` : ''}
                       </a>
                     </td>
                     <td className="col-updated">
