@@ -167,24 +167,105 @@ export default function App() {
   })
 
   const sorted = [...filtered].sort((a, b) => {
-    // Server already sorted by updatedAt / likes, only handle price client-side
-    if (sortKey !== 'price') return 0
     const dir = sortDir === 'asc' ? 1 : -1
-    const parsePrice = (p) => {
-      if (!p) return 0
-      const s = String(p).replace(/[^\d.,]/g, '').replace(',', '.')
-      const v = parseFloat(s)
-      return Number.isNaN(v) ? 0 : v
+    if (sortKey === 'title') {
+      const av = (a.title || '').toLowerCase()
+      const bv = (b.title || '').toLowerCase()
+      if (av === bv) return 0
+      return av > bv ? dir : -dir
     }
-    const av = parsePrice(a.price_incl_protection || a.price)
-    const bv = parsePrice(b.price_incl_protection || b.price)
-    return av === bv ? 0 : av > bv ? dir : -dir
+    if (sortKey === 'likes') {
+      const av = a.likes ?? 0
+      const bv = b.likes ?? 0
+      return av === bv ? 0 : av > bv ? dir : -dir
+    }
+    if (sortKey === 'price') {
+      const parsePrice = (p) => {
+        if (!p) return 0
+        const s = String(p).replace(/[^\d.,]/g, '').replace(',', '.')
+        const v = parseFloat(s)
+        return Number.isNaN(v) ? 0 : v
+      }
+      const av = parsePrice(a.price_incl_protection || a.price)
+      const bv = parsePrice(b.price_incl_protection || b.price)
+      return av === bv ? 0 : av > bv ? dir : -dir
+    }
+    // default: updatedAt
+    const ad = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+    const bd = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+    return ad === bd ? 0 : ad > bd ? dir : -dir
   })
 
-  const handleExportCsv = () => {
-    if (!sorted.length) return
+  const handleExportCsv = async () => {
+    if (!items.length) return
+
+    // Fetch all pages from the backend so export includes all rows,
+    // not just the current page.
+    const allItems = []
+    for (let p = 1; p <= totalPages; p += 1) {
+      const params = new URLSearchParams({
+        page: String(p),
+        limit: '30',
+        source: sourceFilter,
+        sort: sortKey,
+        dir: sortDir,
+      })
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const res = await fetch(`/api/items?${params.toString()}`)
+        if (!res.ok) continue
+        // eslint-disable-next-line no-await-in-loop
+        const data = await res.json()
+        if (Array.isArray(data.items)) {
+          allItems.push(...data.items)
+        }
+      } catch {
+        // ignore individual page errors and continue
+      }
+    }
+
+    if (!allItems.length) return
+
+    // Apply same title filter
+    const filteredAll = tableFilter.trim()
+      ? allItems.filter((i) => {
+          const q = tableFilter.toLowerCase()
+          const title = (i.title || '').toLowerCase()
+          return title.includes(q)
+        })
+      : allItems
+
+    // Apply same sorting logic
+    const sortedAll = [...filteredAll].sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1
+      if (sortKey === 'title') {
+        const av = (a.title || '').toLowerCase()
+        const bv = (b.title || '').toLowerCase()
+        if (av === bv) return 0
+        return av > bv ? dir : -dir
+      }
+      if (sortKey === 'likes') {
+        const av = a.likes ?? 0
+        const bv = b.likes ?? 0
+        return av === bv ? 0 : av > bv ? dir : -dir
+      }
+      if (sortKey === 'price') {
+        const parsePrice = (p) => {
+          if (!p) return 0
+          const s = String(p).replace(/[^\d.,]/g, '').replace(',', '.')
+          const v = parseFloat(s)
+          return Number.isNaN(v) ? 0 : v
+        }
+        const av = parsePrice(a.price_incl_protection || a.price)
+        const bv = parsePrice(b.price_incl_protection || b.price)
+        return av === bv ? 0 : av > bv ? dir : -dir
+      }
+      const ad = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+      const bd = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+      return ad === bd ? 0 : ad > bd ? dir : -dir
+    })
+
     const headers = [
-      'id',
       'title',
       'price',
       'price_incl_protection',
@@ -198,21 +279,30 @@ export default function App() {
       'brand',
       'updatedAt',
     ]
-    const rows = sorted.map((i) => [
-      i.id ?? '',
-      i.title ?? '',
-      i.price_incl_protection || i.price || '',
-      i.price_incl_protection || '',
-      i.source ?? '',
-      i.likes ?? '',
-      i.ebayData?.minPrice ?? '',
-      i.ebayData?.maxPrice ?? '',
-      i.ebayData?.total ?? '',
-      i.url ?? '',
-      i.photo_url ?? '',
-      i.brand ?? '',
-      i.updatedAt ?? '',
-    ])
+    const rows = sortedAll.map((i) => {
+      const rawFrom = i.ebayData?.minPrice ?? ''
+      const rawTo = i.ebayData?.maxPrice ?? ''
+      const norm = (s) => {
+        if (!s) return ''
+        const str = String(s).replace(/\s+/g, ' ').trim()
+        // normalise euro symbol to "EUR " for CSV/Excel safety
+        return str.replace(/\u00a0?€/g, ' EUR')
+      }
+      return [
+        i.title ?? '',
+        i.price_incl_protection || i.price || '',
+        i.price_incl_protection || '',
+        i.source ?? '',
+        i.likes ?? '',
+        norm(rawFrom),
+        norm(rawTo),
+        i.ebayData?.total ?? '',
+        i.url ?? '',
+        i.photo_url ?? '',
+        i.brand ?? '',
+        i.updatedAt ?? '',
+      ]
+    })
 
     const escapeCell = (value) => {
       const s = String(value ?? '')
