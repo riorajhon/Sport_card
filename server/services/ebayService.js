@@ -102,6 +102,7 @@ export async function searchCurrentListings(query, limit = 5) {
     if (value == null) return null;
     const c = (currency || 'USD').toUpperCase();
     if (c === 'USD') return `$${value}`;
+    if (c === 'EUR') return `€${value}`;
     return `${value} ${c}`;
   }
 

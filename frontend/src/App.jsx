@@ -5,6 +5,7 @@ function formatPriceDisplay(str) {
   if (!str || typeof str !== 'string') return str
   const s = str.trim()
   if (s.endsWith(' USD')) return `$${s.slice(0, -4).trim()}`
+  if (s.endsWith(' EUR')) return `€${s.slice(0, -4).trim()}`
   return str
 }
 
