@@ -62,7 +62,6 @@ function EbayCell({ item }) {
       {data.maxPrice != null && data.maxPrice !== data.minPrice && (
         <span className="ebay-price ebay-max">Up to {maxStr}</span>
       )}
-      <span className="ebay-meta">{data.total != null ? `${data.total} on eBay` : ''}</span>
       <a
         href={item.ebay_link || `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent((item.title || '').slice(0, 80))}`}
         target="_blank"
@@ -77,32 +76,45 @@ function EbayCell({ item }) {
 
 export default function App() {
   const [items, setItems] = useState([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [tableFilter, setTableFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [sortKey, setSortKey] = useState('updatedAt')
+  const [sortDir, setSortDir] = useState('desc')
   const [toasts, setToasts] = useState([])
   const [lastUpdated, setLastUpdated] = useState(null)
   const [vintedDomain, setVintedDomain] = useState(null)
-  const [scrapeProgress, setScrapeProgress] = useState({
-    running: false,
-    currentPage: 0,
-    totalPages: 0,
-    nextScrapeAt: null,
-    periodMs: null,
-  })
-  const [tick, setTick] = useState(0)
+  const [vintedCount, setVintedCount] = useState(0)
+  const [catawikiCount, setCatawikiCount] = useState(0)
+  const [topLiked, setTopLiked] = useState([])
+  const [ebayTotalCount, setEbayTotalCount] = useState(0)
   const refetchTimeoutRef = useRef(null)
-  const scrapeProgressRef = useRef(null)
-  const scrapePollIntervalRef = useRef(null)
 
-  const loadItems = () => {
+  const loadItems = (nextPage) => {
+    const targetPage = nextPage || page || 1
     setLoading(true)
-    fetch('/api/items')
+    const params = new URLSearchParams({
+      page: String(targetPage),
+      limit: '30',
+      source: sourceFilter,
+      sort: sortKey,
+      dir: sortDir,
+    })
+    fetch(`/api/items?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => {
         setItems(data.items || [])
+        setPage(data.page || targetPage)
+        setTotalPages(data.totalPages || 1)
         setLastUpdated(data.lastScrapeEndedAt || null)
         setVintedDomain(data.vintedDomain || null)
+        setVintedCount(data.vintedCount || 0)
+        setCatawikiCount(data.catawikiCount || 0)
+        setTopLiked(data.topLiked || [])
+        setEbayTotalCount(data.ebayTotalCount || 0)
       })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
@@ -112,53 +124,11 @@ export default function App() {
     loadItems()
   }, [])
 
+  // Refetch when source or sort changes (reset to first page)
   useEffect(() => {
-    let cancelled = false
-    const poll = () => {
-      if (cancelled) return
-      fetch('/api/scrape/status')
-        .then((r) => r.json())
-        .catch(() => null)
-        .then((data) => {
-          if (cancelled || data == null) return
-          const next = {
-            running: !!data.running,
-            currentPage: data.currentPage ?? 0,
-            totalPages: data.totalPages ?? 0,
-            nextScrapeAt: data.nextScrapeAt ?? null,
-            periodMs: data.periodMs ?? null,
-          }
-          const prev = scrapeProgressRef.current
-          if (
-            prev == null ||
-            prev.running !== next.running ||
-            prev.currentPage !== next.currentPage ||
-            prev.totalPages !== next.totalPages ||
-            prev.nextScrapeAt !== next.nextScrapeAt ||
-            prev.periodMs !== next.periodMs
-          ) {
-            scrapeProgressRef.current = next
-            setScrapeProgress(next)
-          }
-        })
-    }
-    scrapePollIntervalRef.current = setInterval(poll, 3000)
-    poll()
-    return () => {
-      cancelled = true
-      if (scrapePollIntervalRef.current != null) {
-        clearInterval(scrapePollIntervalRef.current)
-        scrapePollIntervalRef.current = null
-      }
-    }
-  }, [])
-
-  // Tick every second when idle so countdown and progress bar update
-  useEffect(() => {
-    if (scrapeProgress.running) return
-    const id = setInterval(() => setTick((t) => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [scrapeProgress.running])
+    loadItems(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceFilter, sortKey, sortDir])
 
   useEffect(() => {
     const es = new EventSource('/api/notifications')
@@ -189,98 +159,109 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }
 
-  const filtered = tableFilter.trim()
-    ? items.filter((i) => {
-        const q = tableFilter.toLowerCase()
-        const title = (i.title || '').toLowerCase()
-        const condition = (i.condition || '').toLowerCase()
-        const price = (i.price_incl_protection || i.price || '').toString().toLowerCase()
-        const ebayStr = i.ebayData?.minPrice
-          ? (formatPriceDisplay(i.ebayData.minPrice) || i.ebayData.minPrice).toString().toLowerCase()
-          : ''
-        return title.includes(q) || condition.includes(q) || price.includes(q) || ebayStr.includes(q)
-      })
-    : items
+  const filtered = items.filter((i) => {
+    if (!tableFilter.trim()) return true
+    const q = tableFilter.toLowerCase()
+    const title = (i.title || '').toLowerCase()
+    return title.includes(q)
+  })
+
+  const sorted = [...filtered].sort((a, b) => {
+    // Server already sorted by updatedAt / likes, only handle price client-side
+    if (sortKey !== 'price') return 0
+    const dir = sortDir === 'asc' ? 1 : -1
+    const parsePrice = (p) => {
+      if (!p) return 0
+      const s = String(p).replace(/[^\d.,]/g, '').replace(',', '.')
+      const v = parseFloat(s)
+      return Number.isNaN(v) ? 0 : v
+    }
+    const av = parsePrice(a.price_incl_protection || a.price)
+    const bv = parsePrice(b.price_incl_protection || b.price)
+    return av === bv ? 0 : av > bv ? dir : -dir
+  })
+
+  const handleChangeSort = (key) => {
+    setSortKey((prevKey) => {
+      if (prevKey === key) {
+        setSortDir((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'))
+        return prevKey
+      }
+      setSortDir('desc')
+      return key
+    })
+  }
+
+  const goToPage = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return
+    loadItems(nextPage)
+  }
+
+  const totalBySource = vintedCount + catawikiCount
+  const vintedDeg = totalBySource > 0 ? (vintedCount / totalBySource) * 360 : 0
 
   return (
     <div className="app">
       <header className="header">
         <h1>Sport cards</h1>
-        <div className="toolbar">
-          {lastUpdated && (
-            <span className="last-updated">
-              Last updated: {formatUpdatedAt(lastUpdated)}
-            </span>
-          )}
-        </div>
       </header>
 
-      <section className="system-status" aria-label="System status">
-        {scrapeProgress.running ? (
-          <div className="system-status-scraping" role="status" aria-live="polite">
-            <div className="system-status-row">
-              <span className="system-status-label">Scraping</span>
-              <span className="system-status-detail">
-                Page {scrapeProgress.currentPage} / {scrapeProgress.totalPages || 100}
-                {scrapeProgress.totalPages > 0 && (
-                  <span className="system-status-pct">
-                    {' '}({Math.round((100 * scrapeProgress.currentPage) / scrapeProgress.totalPages)}%)
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className="system-status-bar-wrap">
-              <div
-                className="system-status-bar-fill"
-                style={{
-                  width: scrapeProgress.totalPages > 0
-                    ? `${Math.min(100, (100 * scrapeProgress.currentPage) / scrapeProgress.totalPages)}%`
-                    : '0%',
-                }}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="system-status-idle system-status-wait" role="status">
-            <div className="system-status-row">
-              <span className="system-status-label">System</span>
-              <span className="system-status-detail">
-                {scrapeProgress.nextScrapeAt != null && scrapeProgress.periodMs != null ? (
-                  (() => {
-                    const now = Date.now()
-                    const remainingMs = Math.max(0, scrapeProgress.nextScrapeAt - now)
-                    const remainingMin = Math.ceil(remainingMs / 60000)
-                    return (
-                      <>
-                        Next scrape in {remainingMin} min
-                        <span className="system-status-pct"> · 30 min cycle</span>
-                      </>
-                    )
-                  })()
+      <section className="top-dashboard" aria-label="Overview">
+        <div className="top-cards-row">
+          {topLiked.map((card) => (
+            <a
+              key={card.id}
+              className="top-card"
+              href={card.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <div className="top-card-thumb-wrap">
+                {card.photo_url ? (
+                  <img src={card.photo_url} alt="" className="top-card-thumb" />
                 ) : (
-                  'Idle · Auto scrape every 30 min (100 pages)'
+                  <span className="table-no-img">—</span>
                 )}
-              </span>
-            </div>
-            {scrapeProgress.nextScrapeAt != null && scrapeProgress.periodMs != null && (() => {
-              const now = Date.now()
-              const remainingMs = Math.max(0, scrapeProgress.nextScrapeAt - now)
-              const pct = scrapeProgress.periodMs > 0
-                ? Math.min(100, (100 * (scrapeProgress.periodMs - remainingMs)) / scrapeProgress.periodMs)
-                : 0
-              return (
-                <div className="system-status-bar-wrap">
-                  <div className="system-status-bar-fill" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="top-card-body">
+                <div className="top-card-title">{card.title || 'Untitled'}</div>
+                <div className="top-card-meta">
+                  <span className="top-card-likes">{card.likes ?? 0} likes</span>
+                  <span className={`top-card-source top-card-source-${card.source || 'vinted'}`}>
+                    {card.source === 'catawiki' ? 'Catawiki' : 'Vinted'}
+                  </span>
                 </div>
-              )
-            })()}
+              </div>
+            </a>
+          ))}
+        </div>
+        <div className="top-circle">
+          <div
+            className="top-circle-inner"
+            style={{
+              '--vintedDeg': `${vintedDeg}deg`,
+            }}
+          >
+            <div className="top-circle-center">
+              <span className="top-circle-total">{totalBySource}</span>
+              <span className="top-circle-total-label">total cards</span>
+            </div>
           </div>
-        )}
-        {lastUpdated && (
-          <div className="system-status-last-updated">
-            Last updated: {formatUpdatedAt(lastUpdated)}
+          <div className="top-circle-legend">
+            <div className="top-circle-row">
+              <span className="legend-dot legend-vinted" />
+              <span className="top-circle-label">
+                Vinted{vintedDomain ? ` (${vintedDomain.toUpperCase()})` : ''}
+              </span>
+              <span className="top-circle-value">{vintedCount}</span>
+            </div>
+            <div className="top-circle-row">
+              <span className="legend-dot legend-catawiki" />
+              <span className="top-circle-label">Catawiki</span>
+              <span className="top-circle-value">{catawikiCount}</span>
+            </div>
           </div>
-        )}
+        </div>
       </section>
 
       <main className="main">
@@ -291,28 +272,105 @@ export default function App() {
             <div className="table-toolbar">
               <input
                 type="search"
-                placeholder="Filter table (title, condition, price, eBay…)"
+                placeholder="Filter by title…"
                 value={tableFilter}
                 onChange={(e) => setTableFilter(e.target.value)}
                 className="table-filter"
               />
+              <div className="table-source-filter">
+                <label className="table-source-label">
+                  Source:{' '}
+                  <select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    className="table-source-select"
+                  >
+                    <option value="all">All</option>
+                    <option value="vinted">Vinted</option>
+                    <option value="catawiki">Catawiki</option>
+                  </select>
+                </label>
+              </div>
+              <div className="table-pagination table-pagination-top">
+                <button
+                  type="button"
+                  className="btn-page"
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1 || loading}
+                >
+                  Prev
+                </button>
+                <span className="page-info">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn-page"
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= totalPages || loading}
+                >
+                  Next
+                </button>
+              </div>
             </div>
             <table className="cards-table">
               <thead>
                 <tr>
-                  <th className="col-image">Image</th>
-                  <th className="col-title">Title</th>
-                  <th className="col-price">Price</th>
+                  <th className="col-number">#</th>
+                  <th
+                    className="col-image col-sortable"
+                    onClick={() => handleChangeSort('likes')}
+                  >
+                    Image / Likes
+                    {sortKey === 'likes' && (
+                      <span className="sort-indicator">
+                        {sortDir === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
+                  <th
+                    className="col-title col-sortable"
+                    onClick={() => handleChangeSort('title')}
+                  >
+                    Title
+                    {sortKey === 'title' && (
+                      <span className="sort-indicator">
+                        {sortDir === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
+                  <th
+                    className="col-price col-sortable"
+                    onClick={() => handleChangeSort('price')}
+                  >
+                    Price
+                    {sortKey === 'price' && (
+                      <span className="sort-indicator">
+                        {sortDir === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
                   <th className="col-condition">Condition</th>
                   <th className="col-ebay">eBay</th>
                   <th className="col-source">Source</th>
-                  <th className="col-updated">Updated</th>
+                  <th
+                    className="col-updated col-sortable"
+                    onClick={() => handleChangeSort('updatedAt')}
+                  >
+                    Updated
+                    {sortKey === 'updatedAt' && (
+                      <span className="sort-indicator">
+                        {sortDir === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </th>
                   <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((item) => (
+                {sorted.map((item, index) => (
                   <tr key={item.id}>
+                    <td className="col-number">{index + 1}</td>
                     <td className="col-image">
                       <div className="thumb-wrap">
                         {item.photo_url ? (
@@ -340,15 +398,15 @@ export default function App() {
                       <EbayCell item={item} />
                     </td>
                     <td className="col-source">
-                      {item.source === 'wallapop' ? (
+                      {item.source === 'catawiki' ? (
                         <a
                           href={item.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="source-link source-wallapop"
+                          className="source-link source-catawiki"
                           title={item.url}
                         >
-                          Wallapop
+                          Catawiki
                         </a>
                       ) : (
                         <a
@@ -388,6 +446,27 @@ export default function App() {
                 ))}
               </tbody>
             </table>
+            <div className="table-pagination">
+              <button
+                type="button"
+                className="btn-page"
+                onClick={() => goToPage(page - 1)}
+                disabled={page <= 1 || loading}
+              >
+                Prev
+              </button>
+              <span className="page-info">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                className="btn-page"
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages || loading}
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </main>

@@ -176,16 +176,38 @@ async function runSearchLoop(page, options) {
  */
 export async function runScrape(options = {}) {
   const { maxPages = 2, delayMs = 1500, minLikes, maxLikes, searchText, searchTerms, onPage } = options;
+
+  const chromeArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--disable-software-rasterizer',
+    '--no-first-run',
+  ];
+
+  // Optional HTTP proxy for scraping (e.g. Spanish residential IP)
+  let proxyAuth = null;
+  if (process.env.SCRAPER_PROXY) {
+    try {
+      const proxyUrl = new URL(process.env.SCRAPER_PROXY);
+      const hostPort = proxyUrl.host; // host:port
+      chromeArgs.push(`--proxy-server=${hostPort}`);
+      if (proxyUrl.username || proxyUrl.password) {
+        proxyAuth = {
+          username: decodeURIComponent(proxyUrl.username),
+          password: decodeURIComponent(proxyUrl.password),
+        };
+      }
+      console.log('[Scraper] Using proxy from SCRAPER_PROXY ->', hostPort);
+    } catch (e) {
+      console.warn('[Scraper] Invalid SCRAPER_PROXY value:', e.message);
+    }
+  }
+
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--no-first-run',
-    ],
+    args: chromeArgs,
   });
 
   const sentIds = new Set();
@@ -201,6 +223,13 @@ export async function runScrape(options = {}) {
 
   try {
     const page = await browser.newPage();
+    if (proxyAuth) {
+      try {
+        await page.authenticate(proxyAuth);
+      } catch (e) {
+        console.warn('[Scraper] Proxy authentication failed:', e.message);
+      }
+    }
     await page.setDefaultNavigationTimeout(requestTimeout);
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'en-US,en;q=0.9',

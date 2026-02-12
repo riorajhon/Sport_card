@@ -2,14 +2,8 @@ import { Router } from 'express';
 import { runScrape } from '../services/vintedScraper.js';
 import { processPageItems } from '../services/scrapeProcessor.js';
 import { setLastScrapeEndedAt } from '../lastScrape.js';
-import { getProgress } from '../scrapeProgress.js';
 
 const router = Router();
-
-/** GET /api/scrape/status – current scrape progress for UI */
-router.get('/status', (req, res) => {
-  res.json(getProgress());
-});
 
 const FIXED_MIN_LIKES = 10;
 const FIXED_MAX_PAGES = 100;

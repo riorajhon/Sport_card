@@ -10,7 +10,7 @@ import itemsRouter from './routes/items.js';
 import scrapeRouter from './routes/scrape.js';
 import ebayRouter from './routes/ebay.js';
 import { runHourlyScrape } from './jobs/hourlyScrape.js';
-import { runHourlyWallapop } from './jobs/hourlyWallapop.js';
+import { startCatawikiWatcher } from './catawikiWatcher.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -39,7 +39,7 @@ app.get('/api/notifications', (req, res) => {
 });
 
 runHourlyScrape();
-runHourlyWallapop();
+startCatawikiWatcher();
 
 // Serve built frontend when server/public exists (after npm run build)
 if (hasBuiltFrontend) {
