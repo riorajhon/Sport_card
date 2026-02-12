@@ -59,7 +59,7 @@ BASE_URL = "https://www.catawiki.com"
 CATEGORY_URL = "https://www.catawiki.com/es/s?q=sport%20card"
 
 # MongoDB config – use same DB/collection as MERN Item model
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://admin:StrongPassword123@localhost:27017")
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "sport")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "items")
 
