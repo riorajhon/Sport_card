@@ -350,7 +350,6 @@ export default function App() {
                       </span>
                     )}
                   </th>
-                  <th className="col-condition">Condition</th>
                   <th className="col-ebay">eBay</th>
                   <th className="col-source">Source</th>
                   <th
@@ -393,7 +392,6 @@ export default function App() {
                         {formatPriceDisplay(item.price_incl_protection || item.price) || '—'}
                       </span>
                     </td>
-                    <td className="col-condition">{item.condition || '—'}</td>
                     <td className="col-ebay">
                       <EbayCell item={item} />
                     </td>

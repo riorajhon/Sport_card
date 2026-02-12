@@ -1,52 +1,57 @@
 import { Item } from './models/Item.js';
 import { broadcast } from './notifications.js';
 
-let lastSeenCreatedAt = null;
+let lastSeenUpdatedAt = null;
 let intervalId = null;
 
-async function checkForNewCatawikiItems() {
+async function checkForNewItems() {
   try {
     const since =
-      lastSeenCreatedAt ||
+      lastSeenUpdatedAt ||
       // On first run, start from "now" so we don't spam old records
       new Date();
 
     const docs = await Item.find({
-      source: 'catawiki',
-      createdAt: { $gt: since },
+      updatedAt: { $gt: since },
     })
-      .sort({ createdAt: 1 })
+      .sort({ updatedAt: 1 })
       .lean();
 
     if (!docs.length) {
-      // If this was the very first run and there were no newer docs,
-      // make sure we at least move the pointer forward once.
-      if (!lastSeenCreatedAt) {
-        lastSeenCreatedAt = since;
+      if (!lastSeenUpdatedAt) {
+        lastSeenUpdatedAt = since;
       }
       return;
     }
 
     for (const doc of docs) {
-      lastSeenCreatedAt = new Date(doc.createdAt);
+      const updatedAt = doc.updatedAt ? new Date(doc.updatedAt) : since;
+      const createdAt = doc.createdAt ? new Date(doc.createdAt) : updatedAt;
+
+      // If createdAt is after the last seen time, treat as "added", otherwise "updated"
+      const action =
+        !lastSeenUpdatedAt || createdAt > lastSeenUpdatedAt ? 'added' : 'updated';
+
+      lastSeenUpdatedAt = updatedAt;
+
       broadcast({
         type: 'notification',
-        action: 'added',
+        action,
         item: {
           id: doc.id,
           title: doc.title || '',
           photo_url: doc.photo_url || '',
+          source: doc.source || 'vinted',
         },
       });
     }
   } catch (err) {
-    // Log once; do not crash the server if Mongo is temporarily unavailable
-    console.error('[CatawikiWatcher] Error while checking for new items:', err.message);
+    console.error('[MongoWatcher] Error while checking for new/updated items:', err.message);
   }
 }
 
 export function startCatawikiWatcher(pollIntervalMs = 30_000) {
   if (intervalId) return;
-  intervalId = setInterval(checkForNewCatawikiItems, pollIntervalMs);
+  intervalId = setInterval(checkForNewItems, pollIntervalMs);
 }
 

@@ -574,14 +574,6 @@
   font-weight: 600;
 }
 
-.col-condition {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #a1a1aa;
-}
-
 .col-likes {
   text-align: center;
   white-space: nowrap;
