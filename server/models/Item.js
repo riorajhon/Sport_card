@@ -11,6 +11,8 @@ const itemSchema = new mongoose.Schema(
     brand: { type: String, default: '' },
     condition: { type: String, default: '' },
     likes: { type: Number, default: 0 },
+    /** Source marketplace: vinted, wallapop, etc. */
+    source: { type: String, default: 'vinted' },
     // eBay summary only (no full listings)
     ebay_from: { type: String, default: null },
     ebay_to: { type: String, default: null },

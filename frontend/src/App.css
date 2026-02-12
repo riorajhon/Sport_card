@@ -512,6 +512,14 @@
   color: #f87171;
 }
 
+.source-wallapop {
+  color: #22c55e;
+}
+
+.source-wallapop:hover {
+  color: #4ade80;
+}
+
 .table-link {
   color: #3b82f6;
   text-decoration: none;

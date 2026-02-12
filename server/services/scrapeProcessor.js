@@ -25,6 +25,7 @@ export async function processPageItems(newItems) {
           brand: item.brand || '',
           condition: item.condition || '',
           likes: item.likes ?? 0,
+          source: item.source || 'vinted',
           ebay_from: ebay.minPrice ?? null,
           ebay_to: ebay.maxPrice ?? null,
           ebay_count: ebay.total ?? null,

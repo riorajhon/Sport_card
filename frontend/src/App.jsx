@@ -340,15 +340,27 @@ export default function App() {
                       <EbayCell item={item} />
                     </td>
                     <td className="col-source">
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="source-link source-vinted"
-                        title={item.url}
-                      >
-                        Vinted{vintedDomain ? ` (${vintedDomain.toUpperCase()})` : ''}
-                      </a>
+                      {item.source === 'wallapop' ? (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="source-link source-wallapop"
+                          title={item.url}
+                        >
+                          Wallapop
+                        </a>
+                      ) : (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="source-link source-vinted"
+                          title={item.url}
+                        >
+                          Vinted{vintedDomain ? ` (${vintedDomain.toUpperCase()})` : ''}
+                        </a>
+                      )}
                     </td>
                     <td className="col-updated">
                       <span className="table-updated">{formatUpdatedAt(item.updatedAt)}</span>

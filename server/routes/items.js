@@ -19,6 +19,7 @@ router.get('/', async (req, res) => {
         brand: doc.brand,
         condition: doc.condition,
         likes: doc.likes,
+        source: doc.source || 'vinted',
         updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null,
       };
       if (doc.ebay_from != null || doc.ebay_to != null || doc.ebay_count != null) {
