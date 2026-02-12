@@ -1,9 +1,0 @@
-you have to filter with likes more than 10 like vinted
-and you have to fech ebay and add this
-every page you have to save this on DB
-refer mern project vinted work flow
-
-for ebay fech you need this
-EBAY_CLIENT_ID=DavidGom-SportsCa-PRD-eb45c9f27-601f591e
-EBAY_CLIENT_SECRET=PRD-b45c9f278468-98eb-437b-a4d6-4332
-EBAY_MARKETPLACE_ID=EBAY_ES
