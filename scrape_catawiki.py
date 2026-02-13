@@ -446,7 +446,7 @@ def parse_listings(soup: BeautifulSoup):
 
 def scrape_category(start_url: str):
     """Scrape up to 30 pages of the category and save results into MongoDB."""
-    max_pages = 30
+    max_pages = 50
 
     # Normalise base URL so we can force ?page=1..30 ourselves
     if "&page=" in start_url:
