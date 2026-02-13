@@ -70,6 +70,10 @@ EBAY_MARKETPLACE_ID = os.getenv("EBAY_MARKETPLACE_ID", "EBAY_ES").upper()
 EBAY_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 EBAY_BROWSE_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 EBAY_SCOPE = "https://api.ebay.com/oauth/api_scope"
+EBAY_ANALYTICS_BASE = "https://api.ebay.com/developer/analytics/v1_beta"
+EBAY_RATE_LIMIT_URL = f"{EBAY_ANALYTICS_BASE}/rate_limit/"
+BROWSE_PARAMS = {"api_name": "browse", "api_context": "buy"}
+MONGO_METADATA_COLLECTION = os.getenv("MONGO_METADATA_COLLECTION", "scraper_metadata")
 
 _ebay_token = None
 _ebay_token_expiry = 0.0
@@ -276,6 +280,52 @@ def build_ebay_link(title: str) -> str | None:
     return f"https://www.{domain}/sch/i.html?_nkw={query}"
 
 
+def get_ebay_browse_remaining() -> int:
+    """
+    Check application rate limit for buy.browse (same as check_ebay_usage).
+    Returns remaining calls; 0 if none or on error (so bot skips run).
+    """
+    try:
+        token = get_ebay_access_token()
+        resp = requests.get(
+            EBAY_RATE_LIMIT_URL,
+            headers={"Authorization": f"Bearer {token}"},
+            params=BROWSE_PARAMS,
+            timeout=30,
+        )
+        if resp.status_code == 204 or not resp.ok:
+            return 0
+        data = resp.json()
+        rate_limits = data.get("rateLimits") or []
+        remaining = None
+        for api in rate_limits:
+            for res in api.get("resources") or []:
+                for rate in res.get("rates") or []:
+                    r = rate.get("remaining")
+                    if r is not None:
+                        remaining = min(remaining, r) if remaining is not None else r
+        return int(remaining) if remaining is not None else 0
+    except Exception as e:
+        print(f"[Catawiki bot] Rate limit check failed: {e}")
+        return 0
+
+
+def save_catawiki_last_update(now) -> None:
+    """Write catawikiLastUpdate to scraper_metadata in DB (only when scrape ran)."""
+    try:
+        client = MongoClient(MONGODB_URI)
+        db = client[MONGO_DB_NAME]
+        meta_col = db[MONGO_METADATA_COLLECTION]
+        meta_col.update_one(
+            {"_id": "status"},
+            {"$set": {"catawikiLastUpdate": now, "updatedAt": now}},
+            upsert=True,
+        )
+        client.close()
+    except Exception as e:
+        print(f"[Catawiki bot] Failed to save catawikiLastUpdate: {e}")
+
+
 def fetch_page_html(driver: webdriver.Chrome, url: str) -> BeautifulSoup:
     """
     Use Selenium to open the page like a real browser and return a BeautifulSoup object.
@@ -382,11 +432,10 @@ def parse_listings(soup: BeautifulSoup):
 
 
 def scrape_category(start_url: str):
-    """Scrape up to 50 pages of the category and save results into MongoDB."""
-    # Hard cap like Vinted: max 50 pages per run
-    max_pages = 50
+    """Scrape up to 30 pages of the category and save results into MongoDB."""
+    max_pages = 30
 
-    # Normalise base URL so we can force ?page=1..50 ourselves
+    # Normalise base URL so we can force ?page=1..30 ourselves
     if "&page=" in start_url:
         base_url = start_url.split("&page=", 1)[0]
     else:
@@ -485,21 +534,29 @@ def scrape_category(start_url: str):
 def run_forever():
     """
     Real-time bot mode:
-    - Scrape the Catawiki category.
-    - Then sleep for 1 hour.
-    - Repeat indefinitely until the process is stopped.
+    - Check eBay buy.browse remaining; if 0, skip run and do not update last update time.
+    - Else scrape the Catawiki category, then save catawikiLastUpdate to DB.
+    - Sleep 3 hours; repeat.
     """
     while True:
         start = datetime.now(timezone.utc)
-        print(f"[Catawiki bot] Starting scrape at {start.isoformat()}")
+        print(f"[Catawiki bot] Starting at {start.isoformat()}")
+        remaining = get_ebay_browse_remaining()
+        print(f"[Catawiki bot] eBay buy.browse remaining: {remaining}")
+        if remaining <= 0:
+            print("[Catawiki bot] No remaining — skipping run (not updating last update time)")
+            print("[Catawiki bot] Sleeping for 3 hours (10800 seconds)...")
+            time.sleep(3 * 60 * 60)
+            continue
         try:
             scrape_category(CATEGORY_URL)
+            end = datetime.now(timezone.utc)
+            save_catawiki_last_update(end)
+            print(f"[Catawiki bot] Finished scrape at {end.isoformat()}")
         except Exception as exc:
             print(f"[Catawiki bot] Error during scrape: {exc}")
-        end = datetime.now(timezone.utc)
-        print(f"[Catawiki bot] Finished scrape at {end.isoformat()}")
-        print("[Catawiki bot] Sleeping for 60 minutes (3600 seconds)...")
-        time.sleep(60 * 60)
+        print("[Catawiki bot] Sleeping for 3 hours (10800 seconds)...")
+        time.sleep(3 * 60 * 60)
 
 
 if __name__ == "__main__":

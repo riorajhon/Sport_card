@@ -85,7 +85,8 @@ export default function App() {
   const [sortKey, setSortKey] = useState('updatedAt')
   const [sortDir, setSortDir] = useState('desc')
   const [toasts, setToasts] = useState([])
-  const [lastUpdated, setLastUpdated] = useState(null)
+  const [vintedLastUpdate, setVintedLastUpdate] = useState(null)
+  const [catawikiLastUpdate, setCatawikiLastUpdate] = useState(null)
   const [vintedDomain, setVintedDomain] = useState(null)
   const [vintedCount, setVintedCount] = useState(0)
   const [catawikiCount, setCatawikiCount] = useState(0)
@@ -109,7 +110,8 @@ export default function App() {
         setItems(data.items || [])
         setPage(data.page || targetPage)
         setTotalPages(data.totalPages || 1)
-        setLastUpdated(data.lastScrapeEndedAt || null)
+        setVintedLastUpdate(data.vintedLastUpdate || null)
+        setCatawikiLastUpdate(data.catawikiLastUpdate || null)
         setVintedDomain(data.vintedDomain || null)
         setVintedCount(data.vintedCount || 0)
         setCatawikiCount(data.catawikiCount || 0)
@@ -402,6 +404,16 @@ export default function App() {
               <span className="legend-dot legend-catawiki" />
               <span className="top-circle-label">Catawiki</span>
               <span className="top-circle-value">{catawikiCount}</span>
+            </div>
+          </div>
+          <div className="top-updated-times">
+            <div className="top-updated-row">
+              <span className="top-updated-label">Vinted last updated:</span>
+              <span className="top-updated-value">{formatUpdatedAt(vintedLastUpdate)}</span>
+            </div>
+            <div className="top-updated-row">
+              <span className="top-updated-label">Catawiki last updated:</span>
+              <span className="top-updated-value">{formatUpdatedAt(catawikiLastUpdate)}</span>
             </div>
           </div>
         </div>

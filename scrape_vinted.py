@@ -59,7 +59,7 @@ MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "items")
 VINTED_DOMAIN = (os.getenv("VINTED_DOMAIN", "es") or "es").lower()
 VINTED_SEARCH = os.getenv("VINTED_SEARCH", "sport card")
 VINTED_MIN_LIKES = int(os.getenv("VINTED_MIN_LIKES", "10"))
-VINTED_MAX_PAGES = int(os.getenv("VINTED_MAX_PAGES", "50"))
+VINTED_MAX_PAGES = int(os.getenv("VINTED_MAX_PAGES", "30"))
 
 BASE_URL = f"https://www.vinted.{VINTED_DOMAIN}"
 CATALOG_URL = f"{BASE_URL}/catalog"
@@ -70,6 +70,11 @@ EBAY_MARKETPLACE_ID = os.getenv("EBAY_MARKETPLACE_ID", "EBAY_ES").upper()
 EBAY_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 EBAY_BROWSE_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 EBAY_SCOPE = "https://api.ebay.com/oauth/api_scope"
+EBAY_ANALYTICS_BASE = "https://api.ebay.com/developer/analytics/v1_beta"
+EBAY_RATE_LIMIT_URL = f"{EBAY_ANALYTICS_BASE}/rate_limit/"
+BROWSE_PARAMS = {"api_name": "browse", "api_context": "buy"}
+
+MONGO_METADATA_COLLECTION = os.getenv("MONGO_METADATA_COLLECTION", "scraper_metadata")
 
 _ebay_token = None
 _ebay_token_expiry = 0.0
@@ -246,6 +251,52 @@ def build_ebay_link(title: str) -> str | None:
     return None
   q = quote(title[:80])
   return f"https://www.ebay.com/sch/i.html?_nkw={q}"
+
+
+def get_ebay_browse_remaining() -> int:
+  """
+  Check application rate limit for buy.browse (same as check_ebay_usage).
+  Returns remaining calls; 0 if none or on error (so bot skips run).
+  """
+  try:
+    token = get_ebay_access_token()
+    resp = requests.get(
+      EBAY_RATE_LIMIT_URL,
+      headers={"Authorization": f"Bearer {token}"},
+      params=BROWSE_PARAMS,
+      timeout=30,
+    )
+    if resp.status_code == 204 or not resp.ok:
+      return 0
+    data = resp.json()
+    rate_limits = data.get("rateLimits") or []
+    remaining = None
+    for api in rate_limits:
+      for res in api.get("resources") or []:
+        for rate in res.get("rates") or []:
+          r = rate.get("remaining")
+          if r is not None:
+            remaining = min(remaining, r) if remaining is not None else r
+    return int(remaining) if remaining is not None else 0
+  except Exception as e:
+    print(f"[VintedPy] Rate limit check failed: {e}")
+    return 0
+
+
+def save_vinted_last_update(now) -> None:
+  """Write vintedLastUpdate to scraper_metadata in DB (only when scrape ran)."""
+  try:
+    client = MongoClient(MONGODB_URI)
+    db = client[MONGO_DB_NAME]
+    meta_col = db[MONGO_METADATA_COLLECTION]
+    meta_col.update_one(
+      {"_id": "status"},
+      {"$set": {"vintedLastUpdate": now, "updatedAt": now}},
+      upsert=True,
+    )
+    client.close()
+  except Exception as e:
+    print(f"[VintedPy] Failed to save vintedLastUpdate: {e}")
 
 
 def fetch_vinted_page_html(driver: webdriver.Chrome, page_num: int) -> BeautifulSoup:
@@ -523,15 +574,23 @@ def scrape_once():
 def run_forever():
   while True:
     start = datetime.now(timezone.utc)
-    print(f"[VintedPy bot] Starting scrape at {start.isoformat()}")
+    print(f"[VintedPy bot] Starting at {start.isoformat()}")
+    remaining = get_ebay_browse_remaining()
+    print(f"[VintedPy bot] eBay buy.browse remaining: {remaining}")
+    if remaining <= 0:
+      print("[VintedPy bot] No remaining — skipping run (not updating last update time)")
+      print("[VintedPy bot] Sleeping for 3 hours (10800 seconds)...")
+      time.sleep(3 * 60 * 60)
+      continue
     try:
       scrape_once()
+      end = datetime.now(timezone.utc)
+      save_vinted_last_update(end)
+      print(f"[VintedPy bot] Finished scrape at {end.isoformat()}")
     except Exception as exc:
       print(f"[VintedPy bot] Error during scrape: {exc}")
-    end = datetime.now(timezone.utc)
-    print(f"[VintedPy bot] Finished scrape at {end.isoformat()}")
-    print("[VintedPy bot] Sleeping for 60 minutes (3600 seconds)...")
-    time.sleep(60 * 60)
+    print("[VintedPy bot] Sleeping for 3 hours (10800 seconds)...")
+    time.sleep(3 * 60 * 60)
 
 
 if __name__ == "__main__":

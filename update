@@ -1,0 +1,12 @@
+apply this both scrape_catawiki.py and scrape_vinted.py
+
+reduce search page 50 to 30
+
+first check remaining with check system
+    buy.browse: used=12200 limit=5000 remaining=0 reset=2026-02-13T08:00:00.000Z window=86400s
+if there is no remaining don't start
+and increase sleep time to 3 hours
+and save last update time to DB(when finish scraping if no remaining don't update time)
+
+and display this on dashboard (update MERN)
+so on dashboard has a two updated time (vinted and catawiki)

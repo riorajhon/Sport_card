@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { Item } from '../models/Item.js';
-import { getLastScrapeEndedAt } from '../lastScrape.js';
 import { config } from '../config.js';
+
+const SCRAPER_METADATA_COLLECTION = 'scraper_metadata';
 
 const router = Router();
 
@@ -98,6 +100,25 @@ router.get('/', async (req, res) => {
         ? ebayAgg[0].total
         : 0;
 
+    // Last update times from Python scrapers (scraper_metadata in DB)
+    let vintedLastUpdate = null;
+    let catawikiLastUpdate = null;
+    try {
+      const meta = await mongoose.connection.db
+        .collection(SCRAPER_METADATA_COLLECTION)
+        .findOne({ _id: 'status' });
+      if (meta) {
+        vintedLastUpdate = meta.vintedLastUpdate
+          ? new Date(meta.vintedLastUpdate).toISOString()
+          : null;
+        catawikiLastUpdate = meta.catawikiLastUpdate
+          ? new Date(meta.catawikiLastUpdate).toISOString()
+          : null;
+      }
+    } catch {
+      // ignore
+    }
+
     res.json({
       items,
       total,
@@ -108,7 +129,8 @@ router.get('/', async (req, res) => {
       catawikiCount,
       ebayTotalCount,
       topLiked,
-      lastScrapeEndedAt: getLastScrapeEndedAt(),
+      vintedLastUpdate,
+      catawikiLastUpdate,
       vintedDomain: config.vinted.domain,
     });
   } catch (err) {
