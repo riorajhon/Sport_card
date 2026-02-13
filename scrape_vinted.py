@@ -60,6 +60,8 @@ VINTED_DOMAIN = (os.getenv("VINTED_DOMAIN", "es") or "es").lower()
 VINTED_SEARCH = os.getenv("VINTED_SEARCH", "sport card")
 VINTED_MIN_LIKES = int(os.getenv("VINTED_MIN_LIKES", "10"))
 VINTED_MAX_PAGES = int(os.getenv("VINTED_MAX_PAGES", "30"))
+# Page load timeout (seconds). On failure we retry once.
+VINTED_PAGE_LOAD_TIMEOUT = int(os.getenv("VINTED_PAGE_LOAD_TIMEOUT", "180"))
 
 BASE_URL = f"https://www.vinted.{VINTED_DOMAIN}"
 CATALOG_URL = f"{BASE_URL}/catalog"
@@ -120,6 +122,8 @@ def create_driver() -> webdriver.Chrome:
     service=Service(ChromeDriverManager().install()),
     options=chrome_options,
   )
+  # Fail page loads sooner than default 120s so we can retry
+  driver.set_page_load_timeout(VINTED_PAGE_LOAD_TIMEOUT)
   return driver
 
 
@@ -304,14 +308,24 @@ def fetch_vinted_page_html(driver: webdriver.Chrome, page_num: int) -> Beautiful
   Load the public catalog HTML page like:
   https://www.vinted.es/catalog?search_text=sport%20card&page=2
   and return a BeautifulSoup object for parsing.
+  Retries once on timeout (page load or read timeout).
   """
   params = {
     "search_text": VINTED_SEARCH,
     "page": str(page_num),
   }
   url = f"{CATALOG_URL}?{urlencode(params, doseq=True)}"
-  print(f"[VintedPy] Loading catalog page: {url}")
-  driver.get(url)
+  for attempt in range(2):
+    try:
+      print(f"[VintedPy] Loading catalog page: {url}" + (" (retry)" if attempt else ""))
+      driver.get(url)
+      break
+    except Exception as e:
+      if attempt == 0 and ("timed out" in str(e).lower() or "timeout" in str(e).lower()):
+        print(f"[VintedPy] Timeout on page load, retrying in 5s...")
+        time.sleep(5)
+        continue
+      raise
   # Give the page some time to render dynamic content
   time.sleep(3)
   html = driver.page_source
@@ -582,11 +596,10 @@ def run_forever():
       print("[VintedPy bot] Sleeping for 3 hours (10800 seconds)...")
       time.sleep(3 * 60 * 60)
       continue
+    save_vinted_last_update(start)
     try:
       scrape_once()
-      end = datetime.now(timezone.utc)
-      save_vinted_last_update(end)
-      print(f"[VintedPy bot] Finished scrape at {end.isoformat()}")
+      print(f"[VintedPy bot] Finished scrape at {datetime.now(timezone.utc).isoformat()}")
     except Exception as exc:
       print(f"[VintedPy bot] Error during scrape: {exc}")
     print("[VintedPy bot] Sleeping for 3 hours (10800 seconds)...")

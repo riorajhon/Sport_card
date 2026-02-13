@@ -74,6 +74,8 @@ EBAY_ANALYTICS_BASE = "https://api.ebay.com/developer/analytics/v1_beta"
 EBAY_RATE_LIMIT_URL = f"{EBAY_ANALYTICS_BASE}/rate_limit/"
 BROWSE_PARAMS = {"api_name": "browse", "api_context": "buy"}
 MONGO_METADATA_COLLECTION = os.getenv("MONGO_METADATA_COLLECTION", "scraper_metadata")
+# Page load timeout (seconds). On failure we retry once.
+CATAWIKI_PAGE_LOAD_TIMEOUT = int(os.getenv("CATAWIKI_PAGE_LOAD_TIMEOUT", "180"))
 
 _ebay_token = None
 _ebay_token_expiry = 0.0
@@ -127,6 +129,7 @@ def create_driver() -> webdriver.Chrome:
         service=Service(ChromeDriverManager().install()),
         options=chrome_options,
     )
+    driver.set_page_load_timeout(CATAWIKI_PAGE_LOAD_TIMEOUT)
     return driver
 
 
@@ -329,8 +332,18 @@ def save_catawiki_last_update(now) -> None:
 def fetch_page_html(driver: webdriver.Chrome, url: str) -> BeautifulSoup:
     """
     Use Selenium to open the page like a real browser and return a BeautifulSoup object.
+    Retries once on timeout (page load or read timeout).
     """
-    driver.get(url)
+    for attempt in range(2):
+        try:
+            driver.get(url)
+            break
+        except Exception as e:
+            if attempt == 0 and ("timed out" in str(e).lower() or "timeout" in str(e).lower()):
+                print(f"[Catawiki bot] Timeout on page load, retrying in 5s...")
+                time.sleep(5)
+                continue
+            raise
     # Wait a bit for dynamic content to load
     time.sleep(3)
     html = driver.page_source
@@ -548,11 +561,10 @@ def run_forever():
             print("[Catawiki bot] Sleeping for 3 hours (10800 seconds)...")
             time.sleep(3 * 60 * 60)
             continue
+        save_catawiki_last_update(start)
         try:
             scrape_category(CATEGORY_URL)
-            end = datetime.now(timezone.utc)
-            save_catawiki_last_update(end)
-            print(f"[Catawiki bot] Finished scrape at {end.isoformat()}")
+            print(f"[Catawiki bot] Finished scrape at {datetime.now(timezone.utc).isoformat()}")
         except Exception as exc:
             print(f"[Catawiki bot] Error during scrape: {exc}")
         print("[Catawiki bot] Sleeping for 3 hours (10800 seconds)...")
