@@ -5,7 +5,7 @@ import fs from 'fs';
 import cors from 'cors';
 import { config } from './config.js';
 import { connectDb } from './db.js';
-import { subscribe as subscribeNotifications } from './notifications.js';
+import { subscribe as subscribeNotifications, startKeepalive } from './notifications.js';
 import itemsRouter from './routes/items.js';
 import ebayRouter from './routes/ebay.js';
 import { startCatawikiWatcher } from './catawikiWatcher.js';
@@ -31,10 +31,12 @@ app.get('/api/notifications', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // nginx: disable buffering
   res.flushHeaders?.();
   subscribeNotifications(res);
 });
 
+startKeepalive();
 startCatawikiWatcher();
 
 // Serve built frontend when server/public exists (after npm run build)

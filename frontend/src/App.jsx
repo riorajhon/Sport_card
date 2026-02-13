@@ -93,6 +93,8 @@ export default function App() {
   const [topLiked, setTopLiked] = useState([])
   const [ebayTotalCount, setEbayTotalCount] = useState(0)
   const refetchTimeoutRef = useRef(null)
+  const pageRef = useRef(1)
+  pageRef.current = page
 
   const loadItems = (nextPage) => {
     const targetPage = nextPage || page || 1
@@ -133,26 +135,39 @@ export default function App() {
   }, [sourceFilter, sortKey, sortDir])
 
   useEffect(() => {
-    const es = new EventSource('/api/notifications')
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        if (data.type === 'notification' && data.item) {
-          const id = Date.now()
-          setToasts((prev) => [...prev.slice(-4), { id, ...data }])
-          setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000)
-          // Debounce refetch: one refetch 1.5s after last notification to avoid infinite/burst refetches
-          if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current)
-          refetchTimeoutRef.current = setTimeout(() => {
-            refetchTimeoutRef.current = null
-            loadItems()
-          }, 1500)
-        }
-      } catch (_) {}
+    let es = null
+    let reconnectTimer = null
+
+    function connect() {
+      es = new EventSource('/api/notifications')
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
+          if (data.type === 'notification' && data.item) {
+            const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+            setToasts((prev) => [...prev.slice(-4), { id, ...data }])
+            setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000)
+            // Debounce refetch: one refetch 1.5s after last notification; refetch current page
+            if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current)
+            refetchTimeoutRef.current = setTimeout(() => {
+              refetchTimeoutRef.current = null
+              loadItems(pageRef.current)
+            }, 1500)
+          }
+        } catch (_) {}
+      }
+      es.onerror = () => {
+        es.close()
+        es = null
+        // Reconnect after 3s so alerts work again after network blips
+        reconnectTimer = setTimeout(connect, 3000)
+      }
     }
-    es.onerror = () => {}
+
+    connect()
     return () => {
-      es.close()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (es) es.close()
       if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current)
     }
   }, [])
@@ -406,16 +421,6 @@ export default function App() {
               <span className="top-circle-value">{catawikiCount}</span>
             </div>
           </div>
-          <div className="top-updated-times">
-            <div className="top-updated-row">
-              <span className="top-updated-label">Vinted last updated:</span>
-              <span className="top-updated-value">{formatUpdatedAt(vintedLastUpdate)}</span>
-            </div>
-            <div className="top-updated-row">
-              <span className="top-updated-label">Catawiki last updated:</span>
-              <span className="top-updated-value">{formatUpdatedAt(catawikiLastUpdate)}</span>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -425,6 +430,16 @@ export default function App() {
         {items.length > 0 && (
           <div className="table-wrap">
             <div className="table-toolbar">
+              <div className="table-header-updated">
+                <span className="table-updated-item">
+                  <span className="table-updated-label">Vinted:</span>
+                  <span className="table-updated-value">{formatUpdatedAt(vintedLastUpdate)}</span>
+                </span>
+                <span className="table-updated-item">
+                  <span className="table-updated-label">Catawiki:</span>
+                  <span className="table-updated-value">{formatUpdatedAt(catawikiLastUpdate)}</span>
+                </span>
+              </div>
               <input
                 type="search"
                 placeholder="Filter by title…"

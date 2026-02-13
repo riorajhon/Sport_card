@@ -24,15 +24,18 @@ async function checkForNewItems() {
       return;
     }
 
+    let maxUpdatedAt = lastSeenUpdatedAt;
+
     for (const doc of docs) {
       const updatedAt = doc.updatedAt ? new Date(doc.updatedAt) : since;
       const createdAt = doc.createdAt ? new Date(doc.createdAt) : updatedAt;
+      if (updatedAt > maxUpdatedAt) maxUpdatedAt = updatedAt;
 
       // If createdAt is after the last seen time, treat as "added", otherwise "updated"
       const action =
-        !lastSeenUpdatedAt || createdAt > lastSeenUpdatedAt ? 'added' : 'updated';
-
-      lastSeenUpdatedAt = updatedAt;
+        !lastSeenUpdatedAt || createdAt.getTime() > lastSeenUpdatedAt.getTime()
+          ? 'added'
+          : 'updated';
 
       broadcast({
         type: 'notification',
@@ -45,13 +48,19 @@ async function checkForNewItems() {
         },
       });
     }
+
+    lastSeenUpdatedAt = maxUpdatedAt;
   } catch (err) {
     console.error('[MongoWatcher] Error while checking for new/updated items:', err.message);
   }
 }
 
-export function startCatawikiWatcher(pollIntervalMs = 30_000) {
+const POLL_INTERVAL_MS = 15_000;
+
+export function startCatawikiWatcher(pollIntervalMs = POLL_INTERVAL_MS) {
   if (intervalId) return;
+  // Run once immediately to set lastSeenUpdatedAt, then poll every N seconds
+  checkForNewItems();
   intervalId = setInterval(checkForNewItems, pollIntervalMs);
 }
 
