@@ -194,6 +194,7 @@ def search_ebay_current_listings(query: str, limit: int = 5) -> dict:
             "currency": None,
         }
 
+    time.sleep(1)  # throttle to avoid eBay "too many requests"
     token = get_ebay_access_token()
     params = {
         "q": query.strip()[:350],
@@ -497,8 +498,8 @@ def run_forever():
             print(f"[Catawiki bot] Error during scrape: {exc}")
         end = datetime.now(timezone.utc)
         print(f"[Catawiki bot] Finished scrape at {end.isoformat()}")
-        print("[Catawiki bot] Sleeping for 30 minutes (1800 seconds)...")
-        time.sleep(30 * 60)
+        print("[Catawiki bot] Sleeping for 60 minutes (3600 seconds)...")
+        time.sleep(60 * 60)
 
 
 if __name__ == "__main__":
